@@ -25,6 +25,7 @@ export interface Database {
                     name?: string
                     created_at?: string
                 }
+                Relationships: []
             }
             profiles: {
                 Row: {
@@ -60,6 +61,15 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "profiles_department_id_fkey"
+                        columns: ["department_id"]
+                        isOneToOne: false
+                        referencedRelation: "departments"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
             books: {
                 Row: {
@@ -101,6 +111,7 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                 }
+                Relationships: []
             }
             loans: {
                 Row: {
@@ -142,6 +153,22 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "loans_user_id_fkey"
+                        columns: ["user_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "loans_book_id_fkey"
+                        columns: ["book_id"]
+                        isOneToOne: false
+                        referencedRelation: "books"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
             settings: {
                 Row: {
@@ -171,6 +198,7 @@ export interface Database {
                     max_renewals?: number
                     updated_at?: string
                 }
+                Relationships: []
             }
             admin_audit_logs: {
                 Row: {
@@ -194,7 +222,19 @@ export interface Database {
                     metadata?: Json | null
                     created_at?: string
                 }
+                Relationships: [
+                    {
+                        foreignKeyName: "admin_audit_logs_admin_id_fkey"
+                        columns: ["admin_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
+        }
+        Views: {
+            [_ in never]: never
         }
         Functions: {
             is_admin: {
@@ -225,6 +265,12 @@ export interface Database {
                 Args: { p_admin_id: string; p_action: string; p_metadata?: Json }
                 Returns: string
             }
+        }
+        Enums: {
+            [_ in never]: never
+        }
+        CompositeTypes: {
+            [_ in never]: never
         }
     }
 }
