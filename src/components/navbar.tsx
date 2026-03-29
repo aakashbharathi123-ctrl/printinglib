@@ -34,16 +34,13 @@ interface NavbarProps {
     user: Profile | null
 }
 
-const studentNavItems = [
-    { href: "/catalog", label: "Catalog", icon: Library },
-    { href: "/my-loans", label: "My Loans", icon: BookMarked },
-    { href: "/profile", label: "Profile", icon: User },
-]
+// Student navigation items removed for admin-only portal
 
 const adminNavItems = [
     { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/books", label: "Books", icon: Library },
     { href: "/admin/students", label: "Students", icon: Users },
+    { href: "/admin/staff", label: "Staff", icon: Users }, // Added Staff management
     { href: "/admin/loans", label: "Loans", icon: History },
     { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
@@ -54,7 +51,7 @@ export function Navbar({ user }: NavbarProps) {
     const supabase = createClient()
 
     const isAdmin = user?.role === "admin"
-    const navItems = isAdmin ? adminNavItems : studentNavItems
+    const navItems = adminNavItems // Always use admin nav for the admin portal
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()

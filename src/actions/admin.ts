@@ -74,8 +74,8 @@ export async function fetchAdminLoans(statusFilter?: string) {
     }
 
     let query = adminSupabase
-        .from('loans')
-        .select('*, books (*), profiles!user_id(*)')
+        .from('transactions')
+        .select('*, books (*), students (*), staff (*)')
         .order('created_at', { ascending: false })
 
     if (statusFilter && statusFilter !== 'all') {
@@ -89,6 +89,131 @@ export async function fetchAdminLoans(statusFilter?: string) {
     }
 
     return { success: true, data: data || [] }
+}
+
+export async function fetchStudents() {
+    const adminSupabase = await createAdminClient()
+    const { data, error } = await adminSupabase
+        .from('students')
+        .select('*')
+        .order('name', { ascending: true })
+
+    if (error) return { success: false, error: error.message, data: [] }
+    return { success: true, data: data || [] }
+}
+
+export async function bulkUploadStudents(students: { name: string, reg_no: string }[]) {
+    const adminSupabase = await createAdminClient()
+    
+    const { data, error } = await adminSupabase
+        .from('students')
+        .insert(students)
+        .select()
+
+    if (error) return { success: false, error: error.message }
+    
+    revalidatePath('/admin/students')
+    return { success: true, count: data?.length || 0 }
+}
+
+export async function fetchStaff() {
+    const adminSupabase = await createAdminClient()
+    const { data, error } = await adminSupabase
+        .from('staff')
+        .select('*')
+        .order('name', { ascending: true })
+
+    if (error) return { success: false, error: error.message, data: [] }
+    return { success: true, data: data || [] }
+}
+
+export async function addStaff(name: string) {
+    const adminSupabase = await createAdminClient()
+    const { data, error } = await adminSupabase
+        .from('staff')
+        .insert({ name })
+        .select()
+        .single()
+
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/admin/staff')
+    return { success: true, data }
+}
+
+export async function updateStaff(id: string, name: string) {
+    const adminSupabase = await createAdminClient()
+    const { error } = await adminSupabase
+        .from('staff')
+        .update({ name })
+        .eq('id', id)
+
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
+export async function deleteStaff(id: string) {
+    const adminSupabase = await createAdminClient()
+    const { error } = await adminSupabase
+        .from('staff')
+        .delete()
+        .eq('id', id)
+
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/admin/staff')
+    return { success: true }
+}
+
+export async function assignBook(params: {
+    student_id: string,
+    book_id: string,
+    staff_id: string,
+    due_date: string
+}) {
+    const adminSupabase = await createAdminClient()
+    
+    // Check if book is available
+    const { data: book } = await adminSupabase
+        .from('books')
+        .select('available_copies')
+        .eq('id', params.book_id)
+        .single()
+
+    if (!book || book.available_copies <= 0) {
+        return { success: false, error: 'Book not available' }
+    }
+
+    // Check for duplicate active assignment
+    const { data: existing } = await adminSupabase
+        .from('transactions')
+        .select('id')
+        .eq('student_id', params.student_id)
+        .eq('book_id', params.book_id)
+        .eq('status', 'ACTIVE')
+        .maybeSingle()
+
+    if (existing) {
+        return { success: false, error: 'Student already has an active assignment of this book' }
+    }
+
+    // Create transaction
+    const { error: txError } = await adminSupabase
+        .from('transactions')
+        .insert({
+            student_id: params.student_id,
+            book_id: params.book_id,
+            staff_id: params.staff_id,
+            due_date: params.due_date,
+            status: 'ACTIVE'
+        })
+
+    if (txError) return { success: false, error: txError.message }
+
+    // Update available copies
+    await adminSupabase.rpc('decrement_available_copies', { p_book_id: params.book_id })
+
+    revalidatePath('/admin/loans')
+    return { success: true }
 }
 
 export async function updateStudentProfile(

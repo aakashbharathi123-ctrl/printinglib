@@ -15,13 +15,16 @@ export default async function HomePage() {
             .from("profiles")
             .select("role")
             .eq("id", user.id)
-            .single() as { data: { role: string } | null, error: any }
+            .single()
 
         if (profile?.role === "admin") {
             redirect("/admin/dashboard")
         } else {
-            redirect("/catalog")
+            await supabase.auth.signOut()
+            redirect("/login?error=Access denied. Admin only.")
         }
+    } else {
+        redirect("/login")
     }
 
     return (

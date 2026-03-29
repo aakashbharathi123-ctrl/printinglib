@@ -343,15 +343,15 @@ export async function deleteBook(id: string) {
         return { success: false, error: 'Admin access required' }
     }
 
-    // Check if book has active loans
+    // Check if book has active transactions
     const { count } = await adminSupabase
-        .from('loans')
+        .from('transactions')
         .select('*', { count: 'exact', head: true })
         .eq('book_id', id)
-        .eq('status', 'BORROWED')
+        .eq('status', 'ACTIVE')
 
     if (count && count > 0) {
-        return { success: false, error: 'Cannot delete book with active loans' }
+        return { success: false, error: 'Cannot delete book with active assignments' }
     }
 
     // Hard delete the book
