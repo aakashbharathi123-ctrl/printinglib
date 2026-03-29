@@ -73,7 +73,7 @@ export function BookCard({
         <Card className="group overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
             {/* Book Cover Image */}
             <div className="relative h-48 w-full bg-gradient-to-br from-primary/10 to-primary/5 overflow-hidden">
-                {book.image_url && !imageError ? (
+                {book.image_url && book.image_url.toUpperCase() !== 'NULL' && !imageError ? (
                     <Image
                         src={book.image_url}
                         alt={book.title}

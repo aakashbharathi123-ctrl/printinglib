@@ -1,159 +1,497 @@
-// @ts-nocheck
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { LoanWithBookAndUser } from "@/types/database"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { 
+    Search, 
+    Loader2, 
+    BookMarked, 
+    CheckCircle, 
+    Calendar, 
+    History, 
+    MoreHorizontal, 
+    AlertTriangle, 
+    Plus,
+    UserCircle,
+    GraduationCap,
+    Clock,
+    Filter,
+    CheckCircle2,
+    Mail
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { adminReturnBook, extendLoanDueDate, updateOverdueLoans, fetchAdminLoans } from "@/actions/admin"
+import { 
+    fetchAdminLoans, 
+    adminReturnBook, 
+    fetchStudents,
+    fetchStaff,
+    assignBook,
+    updateOverdueLoans
+} from "@/actions/admin"
+import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
-import { formatDate, getDaysUntilDue, getDueStatus } from "@/lib/utils"
-import { Search, Loader2, BookMarked, CheckCircle, Calendar, RefreshCw, MoreHorizontal, AlertTriangle } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { sendEmail } from "@/lib/email"
 
-export default function AdminLoansPage() {
-    const [loans, setLoans] = useState<LoanWithBookAndUser[]>([])
+export default function BookTrackingDashboard() {
+    const [transactions, setTransactions] = useState<any[]>([])
+    const [students, setStudents] = useState<any[]>([])
+    const [staff, setStaff] = useState<any[]>([])
+    const [books, setBooks] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState("")
     const [statusFilter, setStatusFilter] = useState("all")
-    const [refreshing, setRefreshing] = useState(false)
-    const [isExtendOpen, setIsExtendOpen] = useState(false)
-    const [extendingLoan, setExtendingLoan] = useState<LoanWithBookAndUser | null>(null)
-    const [newDueDate, setNewDueDate] = useState("")
-    const [actionLoading, setActionLoading] = useState<string | null>(null)
-    const { toast } = useToast()
+    const [staffFilter, setStaffFilter] = useState("all")
+    
+    // Assignment state
+    const [isAssignOpen, setIsAssignOpen] = useState(false)
+    const [assignData, setAssignData] = useState({
+        student_id: "",
+        book_id: "",
+        staff_id: "",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    })
+    const [studentSearch, setStudentSearch] = useState("")
+    const [bookSearch, setBookSearch] = useState("")
+    const [assignCategory, setAssignCategory] = useState("all")
+    const [isAssigning, setIsAssigning] = useState(false)
 
-    const fetchLoans = useCallback(async () => {
+    // Return/Extend state
+    const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+    const { toast } = useToast()
+    const supabase = createClient()
+
+    const loadData = useCallback(async () => {
         setLoading(true)
-        const result = await fetchAdminLoans(statusFilter)
+        const [txRes, studRes, staffRes] = await Promise.all([
+            fetchAdminLoans(statusFilter),
+            fetchStudents(),
+            fetchStaff()
+        ])
+
+        if (txRes.success) setTransactions(txRes.data || [])
+        if (studRes.success) setStudents(studRes.data || [])
+        if (staffRes.success) setStaff(staffRes.data || [])
+        
+        // Trigger overdue status update in background
+        updateOverdueLoans()
+        
+        const { data: bookData } = await supabase.from('books').select('*').eq('is_active', true).gt('available_copies', 0)
+        setBooks(bookData || [])
+        
+        setLoading(false)
+    }, [statusFilter, supabase])
+
+    useEffect(() => {
+        loadData()
+    }, [loadData])
+
+    const handleStudentSelect = (id: string) => {
+        setAssignData(prev => ({ ...prev, student_id: id }))
+    }
+
+    const handleAssign = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!assignData.student_id || !assignData.book_id || !assignData.staff_id) {
+            toast({ title: "Validation Error", description: "Please fill all mandatory fields.", variant: "destructive" })
+            return
+        }
+        
+        setIsAssigning(true)
+        const result = await assignBook(assignData)
+        setIsAssigning(false)
+
         if (result.success) {
-            let filtered = result.data as LoanWithBookAndUser[] || []
-            if (search) {
-                const s = search.toLowerCase()
-                filtered = filtered.filter(l => l.books.title.toLowerCase().includes(s) || l.profiles.email?.toLowerCase().includes(s))
-            }
-            setLoans(filtered)
+            toast({ title: "Success", description: "Book assigned successfully" })
+            setIsAssignOpen(false)
+            setAssignData({
+                student_id: "",
+                book_id: "",
+                staff_id: "",
+                due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            })
+            setStudentSearch("")
+            setBookSearch("")
+            setAssignCategory("all")
+            loadData()
         } else {
             toast({ title: "Error", description: result.error, variant: "destructive" })
         }
-        setLoading(false)
-    }, [search, statusFilter, toast])
-
-    useEffect(() => { fetchLoans() }, [fetchLoans])
-    useEffect(() => { const t = setTimeout(fetchLoans, 300); return () => clearTimeout(t) }, [search, statusFilter, fetchLoans])
-
-    const handleRefreshOverdue = async () => {
-        setRefreshing(true)
-        const result = await updateOverdueLoans()
-        setRefreshing(false)
-        if (result.success) { toast({ title: "Updated", description: `${result.updated} marked overdue`, variant: "success" }); fetchLoans() }
-        else toast({ title: "Error", description: result.error, variant: "destructive" })
     }
 
-    const handleReturn = async (loanId: string) => {
-        setActionLoading(loanId)
-        const result = await adminReturnBook(loanId)
+    const handleReturn = async (id: string) => {
+        setActionLoading(id)
+        const result = await adminReturnBook(id)
         setActionLoading(null)
-        if (result.success) { toast({ title: "Success!", description: "Returned", variant: "success" }); fetchLoans() }
-        else toast({ title: "Error", description: result.error, variant: "destructive" })
+        if (result.success) {
+            toast({ title: "Success", description: "Book returned" })
+            loadData()
+        } else {
+            toast({ title: "Error", description: result.error, variant: "destructive" })
+        }
     }
 
-    const openExtendDialog = (loan: LoanWithBookAndUser) => {
-        setExtendingLoan(loan)
-        const d = new Date(loan.due_at); d.setDate(d.getDate() + 7)
-        setNewDueDate(d.toISOString().split("T")[0])
-        setIsExtendOpen(true)
-    }
+    const handleSendReminder = async (tx: any) => {
+        setActionLoading(tx.id)
+        
+        const params = {
+            student_name: tx.students?.name || "Student",
+            student_id: tx.students?.reg_no || "N/A",
+            student_email: tx.students?.email || "",
+            book_title: tx.books?.title || "Book",
+            book_id: tx.books?.id || "N/A",
+            due_date: new Date(tx.due_date).toLocaleDateString(),
+            fine_amount: tx.fine_amount || 500,
+        }
 
-    const handleExtend = async () => {
-        if (!extendingLoan) return
-        setActionLoading(`extend-${extendingLoan.id}`)
-        const result = await extendLoanDueDate(extendingLoan.id, new Date(newDueDate).toISOString())
+        let staffSuccess = false;
+        let studentSuccess = false;
+
+        // Notify Staff
+        if (tx.staff?.email) {
+            const res = await sendEmail('staff', {
+                ...params,
+                to_name: tx.staff.name,
+                to_email: tx.staff.email,
+            })
+            staffSuccess = res.success;
+        }
+
+        // Notify Student
+        if (tx.students?.email) {
+            const res = await sendEmail('student', {
+                ...params,
+                to_name: tx.students.name,
+                to_email: tx.students.email,
+            })
+            studentSuccess = res.success;
+        }
+        
         setActionLoading(null)
-        if (result.success) { toast({ title: "Success!", description: "Extended", variant: "success" }); setIsExtendOpen(false); fetchLoans() }
-        else toast({ title: "Error", description: result.error, variant: "destructive" })
+
+        if (staffSuccess || studentSuccess) {
+            toast({ 
+                title: "Notifications Sent", 
+                description: `Manual notify triggered for ${tx.students?.name}` 
+            })
+        } else {
+            toast({ title: "Notification Failed", description: "Could not send emails. Check credentials.", variant: "destructive" })
+        }
     }
 
-    const getBadge = (loan: LoanWithBookAndUser) => {
-        if (loan.status === "RETURNED") return <Badge variant="secondary">Returned</Badge>
-        if (loan.status === "OVERDUE" || getDueStatus(loan.due_at) === "overdue") return <Badge variant="destructive">Overdue</Badge>
-        if (getDueStatus(loan.due_at) === "due-soon") return <Badge variant="warning">Due Soon</Badge>
-        return <Badge variant="success">Active</Badge>
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(tx => {
+            const matchesSearch = 
+                tx.students?.name.toLowerCase().includes(search.toLowerCase()) ||
+                tx.students?.reg_no.toLowerCase().includes(search.toLowerCase()) ||
+                tx.books?.title.toLowerCase().includes(search.toLowerCase())
+            
+            const matchesStaff = staffFilter === "all" || tx.staff?.id === staffFilter
+            const matchesStatus = statusFilter === "all" || tx.status === statusFilter
+            
+            return matchesSearch && matchesStaff && matchesStatus
+        })
+    }, [transactions, search, staffFilter, statusFilter])
+
+    const bookCategories = useMemo(() => {
+        const cats = new Set(books.map(b => b.category).filter(Boolean))
+        return Array.from(cats).sort() as string[]
+    }, [books])
+
+    const filteredBooks = useMemo(() => {
+        return books.filter(b => {
+            const matchesCat = assignCategory === "all" || b.category === assignCategory
+            const searchLower = bookSearch.toLowerCase()
+            const matchesSearch = !bookSearch || 
+                b.title.toLowerCase().includes(searchLower) || 
+                b.book_id.toLowerCase().includes(searchLower)
+            return matchesCat && matchesSearch
+        })
+    }, [books, assignCategory, bookSearch])
+
+    const getStatusBadge = (tx: any) => {
+        if (tx.status === 'RETURNED') return <Badge className="bg-green-100 text-green-800 border-none rounded-full">Returned</Badge>
+        if (tx.status === 'OVERDUE') return <Badge className="bg-destructive/10 text-destructive border-none animate-pulse rounded-full">Overdue (₹500)</Badge>
+        return <Badge className="bg-primary/10 text-primary border-none rounded-full">Active</Badge>
     }
 
     return (
-        <div className="space-y-8">
-            <div className="flex items-center justify-between">
-                <div><h1 className="text-3xl font-bold mb-2">Loans Management</h1><p className="text-muted-foreground">Track and manage loans</p></div>
-                <Button variant="outline" onClick={handleRefreshOverdue} disabled={refreshing}>
-                    {refreshing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}Refresh Overdue
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-4xl font-bold tracking-tight mb-2 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Book Tracking Dashboard</h1>
+                    <p className="text-muted-foreground">Monitor loans, manage assignments, and track fines.</p>
+                </div>
+                <Button onClick={() => setIsAssignOpen(true)} className="rounded-xl px-8 h-14 text-lg shadow-xl shadow-primary/20 bg-primary hover:scale-105 transition-transform">
+                    <Plus className="h-5 w-5 mr-2" />
+                    Assign Book
                 </Button>
             </div>
 
-            <div className="flex gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Status" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="BORROWED">Borrowed</SelectItem>
-                        <SelectItem value="OVERDUE">Overdue</SelectItem>
-                        <SelectItem value="RETURNED">Returned</SelectItem>
-                    </SelectContent>
-                </Select>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="border-none shadow-lg bg-primary/5">
+                    <CardContent className="pt-6">
+                        <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center text-white"><History className="h-6 w-6" /></div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Active Loans</p>
+                                <p className="text-3xl font-bold">{transactions.filter(t => t.status === 'ACTIVE').length}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="border-none shadow-lg bg-destructive/5">
+                    <CardContent className="pt-6">
+                        <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-xl bg-destructive flex items-center justify-center text-white"><AlertTriangle className="h-6 w-6" /></div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Overdue</p>
+                                <p className="text-3xl font-bold">{transactions.filter(t => t.status === 'OVERDUE').length}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="border-none shadow-lg bg-green-500/5">
+                    <CardContent className="pt-6">
+                        <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-xl bg-green-500 flex items-center justify-center text-white"><CheckCircle2 className="h-6 w-6" /></div>
+                            <div>
+                                <p className="text-sm font-medium text-muted-foreground">Returned</p>
+                                <p className="text-3xl font-bold">{transactions.filter(t => t.status === 'RETURNED').length}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
-            <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><BookMarked className="h-5 w-5" />Loans ({loans.length})</CardTitle></CardHeader>
-                <CardContent>
-                    {loading ? <div className="space-y-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div> :
-                        loans.length === 0 ? <div className="text-center py-12"><BookMarked className="h-12 w-12 text-muted-foreground mx-auto mb-4" /><h3 className="text-lg font-medium">No loans found</h3></div> :
-                            <Table>
-                                <TableHeader><TableRow><TableHead>Book</TableHead><TableHead>Borrower</TableHead><TableHead>Borrowed</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    {loans.map(loan => (
-                                        <TableRow key={loan.id}>
-                                            <TableCell><p className="font-medium">{loan.books.title}</p></TableCell>
-                                            <TableCell><p>{loan.profiles.full_name || loan.profiles.email}</p></TableCell>
-                                            <TableCell>{formatDate(loan.borrowed_at)}</TableCell>
-                                            <TableCell>{loan.status === "RETURNED" ? `Returned ${formatDate(loan.returned_at!)}` : formatDate(loan.due_at)}</TableCell>
-                                            <TableCell>{getBadge(loan)}</TableCell>
-                                            <TableCell className="text-right">
-                                                {loan.status !== "RETURNED" && (
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => handleReturn(loan.id)}><CheckCircle className="h-4 w-4 mr-2" />Return</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => openExtendDialog(loan)}><Calendar className="h-4 w-4 mr-2" />Extend</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>}
+            <Card className="border-none shadow-sm bg-muted/20">
+                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="Search records..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 rounded-xl bg-background border-none h-11" />
+                    </div>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="rounded-xl border-none h-11 bg-background">
+                            <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem value="all">All Status</SelectItem>
+                            <SelectItem value="ACTIVE">Active</SelectItem>
+                            <SelectItem value="OVERDUE">Overdue</SelectItem>
+                            <SelectItem value="RETURNED">Returned</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Select value={staffFilter} onValueChange={setStaffFilter}>
+                        <SelectTrigger className="rounded-xl border-none h-11 bg-background">
+                            <SelectValue placeholder="Assigned Staff" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem value="all">All Staff</SelectItem>
+                            {staff.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Button variant="ghost" onClick={() => { setSearch(""); setStaffFilter("all"); setStatusFilter("all"); }} className="rounded-xl border h-11 hover:bg-background">Reset</Button>
                 </CardContent>
             </Card>
 
-            <Dialog open={isExtendOpen} onOpenChange={setIsExtendOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Extend Due Date</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="p-3 bg-muted rounded-lg"><p className="font-medium">{extendingLoan?.books.title}</p><p className="text-sm text-muted-foreground">Current due: {extendingLoan && formatDate(extendingLoan.due_at)}</p></div>
-                        <div className="space-y-2"><Label>New Due Date</Label><Input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)} min={new Date().toISOString().split("T")[0]} /></div>
+            <Card className="border-none shadow-xl overflow-hidden bg-card/50 backdrop-blur-sm">
+                <CardContent className="p-0">
+                    {loading ? (
+                        <div className="p-20 flex flex-col items-center gap-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p>Loading...</p></div>
+                    ) : filteredTransactions.length === 0 ? (
+                        <div className="p-24 text-center"><BookMarked className="h-16 w-16 text-muted-foreground/20 mx-auto mb-4" /><h3 className="text-xl font-bold">No records found</h3></div>
+                    ) : (
+                        <Table>
+                            <TableHeader className="bg-muted/30">
+                                <TableRow>
+                                    <TableHead className="py-4 pl-6">Student & Book</TableHead>
+                                    <TableHead>Dates</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right pr-6">Action</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredTransactions.map((tx) => (
+                                    <TableRow key={tx.id} className="hover:bg-primary/5 transition-colors group">
+                                        <TableCell className="py-5 pl-6">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold">{tx.students?.name}</span>
+                                                <span className="text-xs text-muted-foreground">{tx.students?.reg_no}</span>
+                                                <span className="text-sm mt-1 text-primary">{tx.books?.title}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col text-sm text-muted-foreground">
+                                                <span>Borrowed: {new Date(tx.borrow_date).toLocaleDateString()}</span>
+                                                <span className="font-medium text-foreground">Due: {new Date(tx.due_date).toLocaleDateString()}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>{getStatusBadge(tx)}</TableCell>
+                                        <TableCell className="text-right pr-6">
+                                            {tx.status !== 'RETURNED' && (
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="rounded-full"><MoreHorizontal className="h-5 w-5" /></Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="rounded-xl">
+                                                        <DropdownMenuItem onClick={() => handleReturn(tx.id)} disabled={!!actionLoading} className="text-green-600">Mark Returned</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleSendReminder(tx)} disabled={!!actionLoading} className="cursor-pointer">
+                                                            <Mail className="h-4 w-4 mr-2" /> 
+                                                            Manual Notify
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+                <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-primary p-8 text-white">
+                        <DialogTitle className="text-3xl font-bold">Assign Book</DialogTitle>
+                        <DialogDescription className="text-white/70">Create a new assignment record.</DialogDescription>
                     </div>
-                    <DialogFooter><Button variant="outline" onClick={() => setIsExtendOpen(false)}>Cancel</Button><Button onClick={handleExtend} disabled={!!actionLoading}>{actionLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Extend</Button></DialogFooter>
+                    <form onSubmit={handleAssign} className="p-8 space-y-6">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <UserCircle className="h-4 w-4" />
+                                        Student Name *
+                                    </Label>
+                                    <Select value={assignData.student_id} onValueChange={handleStudentSelect}>
+                                        <SelectTrigger className="rounded-xl h-12">
+                                            <SelectValue placeholder="Search Name..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl max-h-[300px]">
+                                            {students.map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <GraduationCap className="h-4 w-4" />
+                                        Reg No *
+                                    </Label>
+                                    <Select value={assignData.student_id} onValueChange={handleStudentSelect}>
+                                        <SelectTrigger className="rounded-xl h-12 font-mono text-sm">
+                                            <SelectValue placeholder="Search Reg No..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl max-h-[300px]">
+                                            {students.map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{s.reg_no}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="font-bold">Staff</Label>
+                                <Select value={assignData.staff_id} onValueChange={(v) => setAssignData({...assignData, staff_id: v})}>
+                                    <SelectTrigger className="rounded-xl h-12">
+                                        <SelectValue placeholder="Select Staff" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        {staff.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <Filter className="h-4 w-4" />
+                                        Catalogue Type
+                                    </Label>
+                                    <Select value={assignCategory} onValueChange={setAssignCategory}>
+                                        <SelectTrigger className="rounded-xl h-12">
+                                            <SelectValue placeholder="All Categories" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl max-h-[200px]">
+                                            <SelectItem value="all">All Categories</SelectItem>
+                                            {bookCategories.map(c => (
+                                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <Search className="h-4 w-4" />
+                                        Search Book
+                                    </Label>
+                                    <Input 
+                                        placeholder="Title or ID..." 
+                                        value={bookSearch} 
+                                        onChange={(e) => setBookSearch(e.target.value)} 
+                                        className="rounded-xl h-12"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="font-bold">Select Book *</Label>
+                                <Select value={assignData.book_id} onValueChange={(v) => setAssignData({...assignData, book_id: v})}>
+                                    <SelectTrigger className="rounded-xl h-12 bg-primary/5 border-primary/20">
+                                        <SelectValue placeholder={filteredBooks.length === 0 ? "No books found" : "Choose a book..."} />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl max-h-[300px]">
+                                        {filteredBooks.map(b => (
+                                            <SelectItem key={b.id} value={b.id}>
+                                                {b.title} <span className="text-muted-foreground ml-2 text-xs">({b.book_id})</span>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="font-bold">Due Date</Label>
+                                <Input type="date" value={assignData.due_date} onChange={(e) => setAssignData({...assignData, due_date: e.target.value})} className="rounded-xl h-12" />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" disabled={isAssigning} className="w-full h-14 text-xl rounded-2xl shadow-xl shadow-primary/30">Confirm Assignment</Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>

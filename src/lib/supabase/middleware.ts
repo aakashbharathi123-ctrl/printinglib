@@ -61,31 +61,19 @@ export async function updateSession(request: NextRequest) {
     const pathname = request.nextUrl.pathname
 
     // Public routes that don't require authentication
-    const publicRoutes = ['/login', '/auth/callback', '/']
+    const publicRoutes = ['/login', '/auth/callback']
     const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith('/auth/'))
 
     // If not logged in and trying to access protected route
     if (!user && !isPublicRoute) {
+        if (pathname === '/') return response // Allow landing page if it exists, or redirect below
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
     }
 
-    // If logged in and trying to access login page
-    if (user && pathname === '/login') {
-        const url = request.nextUrl.clone()
-        url.pathname = '/catalog'
-        return NextResponse.redirect(url)
-    }
-
-    // Admin route protection
-    if (pathname.startsWith('/admin')) {
-        if (!user) {
-            const url = request.nextUrl.clone()
-            url.pathname = '/login'
-            return NextResponse.redirect(url)
-        }
-
+    // If logged in
+    if (user) {
         // Check if user is admin
         const { data: profile } = await supabase
             .from('profiles')
@@ -93,11 +81,30 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .single()
 
-        if (!profile || profile.role !== 'admin') {
+        const isAdmin = profile?.role === 'admin'
+
+        // If not admin, sign out and redirect to login
+        if (!isAdmin && !isPublicRoute) {
+            await supabase.auth.signOut()
             const url = request.nextUrl.clone()
-            url.pathname = '/catalog'
+            url.pathname = '/login'
+            url.searchParams.set('error', 'Access denied. Admin only.')
             return NextResponse.redirect(url)
         }
+
+        // If admin and trying to access login, root, or catalog
+        if (isAdmin && (pathname === '/login' || pathname === '/' || pathname === '/catalog')) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/admin/dashboard'
+            return NextResponse.redirect(url)
+        }
+    }
+
+    // Redirect root to login if not logged in
+    if (pathname === '/' && !user) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
     }
 
     return response

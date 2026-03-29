@@ -27,8 +27,7 @@ export async function borrowBook(bookId: string) {
     const result = data as { success: boolean; error?: string; loan_id?: string; due_at?: string; message?: string }
 
     if (result.success) {
-        revalidatePath('/catalog')
-        revalidatePath('/my-loans')
+        revalidatePath('/admin/loans')
     }
 
     return result
@@ -56,8 +55,6 @@ export async function returnBook(loanId: string) {
     const result = data as { success: boolean; error?: string; message?: string; was_late?: boolean }
 
     if (result.success) {
-        revalidatePath('/catalog')
-        revalidatePath('/my-loans')
         revalidatePath('/admin/loans')
     }
 
@@ -85,7 +82,6 @@ export async function renewBook(loanId: string) {
     const result = data as { success: boolean; error?: string; message?: string; new_due_at?: string; renewals_remaining?: number }
 
     if (result.success) {
-        revalidatePath('/my-loans')
         revalidatePath('/admin/loans')
     }
 
@@ -118,6 +114,10 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
 
     for (const book of books) {
         try {
+            // Sanitize NULL strings from Excel/Imports
+            const cleanImageUrl = (book.image_url && typeof book.image_url === 'string' && book.image_url.toUpperCase() === 'NULL') ? null : (book.image_url || null);
+            const cleanCategory = (book.category && typeof book.category === 'string' && book.category.toUpperCase() === 'NULL') ? null : (book.category || null);
+
             // Check if book exists
             const { data: existing } = await adminSupabase
                 .from('books')
@@ -137,8 +137,8 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
                     .update({
                         title: book.title,
                         author: book.author,
-                        image_url: book.image_url,
-                        category: book.category,
+                        image_url: cleanImageUrl,
+                        category: cleanCategory,
                         total_copies: newTotal,
                         available_copies: newAvailable,
                     })
@@ -154,8 +154,8 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
                         book_id: book.book_id,
                         title: book.title,
                         author: book.author || '',
-                        image_url: book.image_url,
-                        category: book.category,
+                        image_url: cleanImageUrl,
+                        category: cleanCategory,
                         total_copies: book.total_copies || 1,
                         available_copies: book.total_copies || 1,
                     })
@@ -177,7 +177,6 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { inserted, updated, failed }
 }
@@ -236,7 +235,6 @@ export async function createBook(bookData: {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true, data }
 }
@@ -318,7 +316,6 @@ export async function updateBook(
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true, data }
 }
@@ -343,15 +340,15 @@ export async function deleteBook(id: string) {
         return { success: false, error: 'Admin access required' }
     }
 
-    // Check if book has active loans
+    // Check if book has active transactions
     const { count } = await adminSupabase
-        .from('loans')
+        .from('transactions')
         .select('*', { count: 'exact', head: true })
         .eq('book_id', id)
-        .eq('status', 'BORROWED')
+        .eq('status', 'ACTIVE')
 
     if (count && count > 0) {
-        return { success: false, error: 'Cannot delete book with active loans' }
+        return { success: false, error: 'Cannot delete book with active assignments' }
     }
 
     // Hard delete the book
@@ -372,7 +369,6 @@ export async function deleteBook(id: string) {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true }
 }
