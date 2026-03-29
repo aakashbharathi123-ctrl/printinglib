@@ -73,7 +73,7 @@ export function Navbar({ user }: NavbarProps) {
         <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-20 items-center">
                 {/* Logo and Department Name */}
-                <Link href={isAdmin ? "/admin/dashboard" : "/catalog"} className="flex items-center gap-4 mr-8 group">
+                <Link href="/admin/dashboard" className="flex items-center gap-4 mr-8 group">
                     <div className="relative h-16 w-16 shrink-0 transition-transform group-hover:scale-105">
                         <Image
                             src="/images/logo.png"
@@ -136,23 +136,6 @@ export function Navbar({ user }: NavbarProps) {
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {!isAdmin && (
-                            <>
-                                <DropdownMenuItem asChild>
-                                    <Link href="/profile" className="cursor-pointer">
-                                        <User className="mr-2 h-4 w-4" />
-                                        Profile
-                                    </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <Link href="/my-loans" className="cursor-pointer">
-                                        <BookMarked className="mr-2 h-4 w-4" />
-                                        My Loans
-                                    </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                            </>
-                        )}
                         <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
                             <LogOut className="mr-2 h-4 w-4" />
                             Sign out

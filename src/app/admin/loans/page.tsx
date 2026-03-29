@@ -85,6 +85,7 @@ export default function BookTrackingDashboard() {
     })
     const [studentSearch, setStudentSearch] = useState("")
     const [bookSearch, setBookSearch] = useState("")
+    const [assignCategory, setAssignCategory] = useState("all")
     const [isAssigning, setIsAssigning] = useState(false)
 
     // Return/Extend state
@@ -144,6 +145,7 @@ export default function BookTrackingDashboard() {
             })
             setStudentSearch("")
             setBookSearch("")
+            setAssignCategory("all")
             loadData()
         } else {
             toast({ title: "Error", description: result.error, variant: "destructive" })
@@ -223,6 +225,22 @@ export default function BookTrackingDashboard() {
             return matchesSearch && matchesStaff && matchesStatus
         })
     }, [transactions, search, staffFilter, statusFilter])
+
+    const bookCategories = useMemo(() => {
+        const cats = new Set(books.map(b => b.category).filter(Boolean))
+        return Array.from(cats).sort() as string[]
+    }, [books])
+
+    const filteredBooks = useMemo(() => {
+        return books.filter(b => {
+            const matchesCat = assignCategory === "all" || b.category === assignCategory
+            const searchLower = bookSearch.toLowerCase()
+            const matchesSearch = !bookSearch || 
+                b.title.toLowerCase().includes(searchLower) || 
+                b.book_id.toLowerCase().includes(searchLower)
+            return matchesCat && matchesSearch
+        })
+    }, [books, assignCategory, bookSearch])
 
     const getStatusBadge = (tx: any) => {
         if (tx.status === 'RETURNED') return <Badge className="bg-green-100 text-green-800 border-none rounded-full">Returned</Badge>
@@ -419,14 +437,49 @@ export default function BookTrackingDashboard() {
                                     </SelectContent>
                                 </Select>
                             </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <Filter className="h-4 w-4" />
+                                        Catalogue Type
+                                    </Label>
+                                    <Select value={assignCategory} onValueChange={setAssignCategory}>
+                                        <SelectTrigger className="rounded-xl h-12">
+                                            <SelectValue placeholder="All Categories" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl max-h-[200px]">
+                                            <SelectItem value="all">All Categories</SelectItem>
+                                            {bookCategories.map(c => (
+                                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <Search className="h-4 w-4" />
+                                        Search Book
+                                    </Label>
+                                    <Input 
+                                        placeholder="Title or ID..." 
+                                        value={bookSearch} 
+                                        onChange={(e) => setBookSearch(e.target.value)} 
+                                        className="rounded-xl h-12"
+                                    />
+                                </div>
+                            </div>
                             <div className="space-y-2">
-                                <Label className="font-bold">Book</Label>
+                                <Label className="font-bold">Select Book *</Label>
                                 <Select value={assignData.book_id} onValueChange={(v) => setAssignData({...assignData, book_id: v})}>
-                                    <SelectTrigger className="rounded-xl h-12">
-                                        <SelectValue placeholder="Select Book" />
+                                    <SelectTrigger className="rounded-xl h-12 bg-primary/5 border-primary/20">
+                                        <SelectValue placeholder={filteredBooks.length === 0 ? "No books found" : "Choose a book..."} />
                                     </SelectTrigger>
-                                    <SelectContent className="rounded-xl">
-                                        {books.map(b => <SelectItem key={b.id} value={b.id}>{b.title}</SelectItem>)}
+                                    <SelectContent className="rounded-xl max-h-[300px]">
+                                        {filteredBooks.map(b => (
+                                            <SelectItem key={b.id} value={b.id}>
+                                                {b.title} <span className="text-muted-foreground ml-2 text-xs">({b.book_id})</span>
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

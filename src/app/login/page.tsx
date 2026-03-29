@@ -45,7 +45,7 @@ function LoginContent() {
             setAuthError(error.message)
             setIsLoading(false)
         } else {
-            router.push("/catalog")
+            router.push("/admin/dashboard")
             router.refresh()
         }
     }

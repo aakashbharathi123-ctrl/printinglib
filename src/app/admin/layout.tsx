@@ -22,7 +22,8 @@ export default async function AdminLayout({
         .single()
 
     if (!profile || profile.role !== "admin") {
-        redirect("/catalog")
+        await supabase.auth.signOut()
+        redirect("/login?error=Access denied. Admin only.")
     }
 
     return (

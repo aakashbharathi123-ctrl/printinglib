@@ -342,7 +342,6 @@ export async function adminReturnBook(loanId: string) {
         })
 
         revalidatePath('/admin/loans')
-        revalidatePath('/catalog')
     }
 
     return result

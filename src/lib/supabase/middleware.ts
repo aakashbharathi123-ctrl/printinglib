@@ -92,8 +92,8 @@ export async function updateSession(request: NextRequest) {
             return NextResponse.redirect(url)
         }
 
-        // If admin and trying to access login or root
-        if (isAdmin && (pathname === '/login' || pathname === '/')) {
+        // If admin and trying to access login, root, or catalog
+        if (isAdmin && (pathname === '/login' || pathname === '/' || pathname === '/catalog')) {
             const url = request.nextUrl.clone()
             url.pathname = '/admin/dashboard'
             return NextResponse.redirect(url)

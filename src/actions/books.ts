@@ -27,8 +27,7 @@ export async function borrowBook(bookId: string) {
     const result = data as { success: boolean; error?: string; loan_id?: string; due_at?: string; message?: string }
 
     if (result.success) {
-        revalidatePath('/catalog')
-        revalidatePath('/my-loans')
+        revalidatePath('/admin/loans')
     }
 
     return result
@@ -56,8 +55,6 @@ export async function returnBook(loanId: string) {
     const result = data as { success: boolean; error?: string; message?: string; was_late?: boolean }
 
     if (result.success) {
-        revalidatePath('/catalog')
-        revalidatePath('/my-loans')
         revalidatePath('/admin/loans')
     }
 
@@ -85,7 +82,6 @@ export async function renewBook(loanId: string) {
     const result = data as { success: boolean; error?: string; message?: string; new_due_at?: string; renewals_remaining?: number }
 
     if (result.success) {
-        revalidatePath('/my-loans')
         revalidatePath('/admin/loans')
     }
 
@@ -181,7 +177,6 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { inserted, updated, failed }
 }
@@ -240,7 +235,6 @@ export async function createBook(bookData: {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true, data }
 }
@@ -322,7 +316,6 @@ export async function updateBook(
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true, data }
 }
@@ -376,7 +369,6 @@ export async function deleteBook(id: string) {
     })
 
     revalidatePath('/admin/books')
-    revalidatePath('/catalog')
 
     return { success: true }
 }
