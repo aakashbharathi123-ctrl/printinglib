@@ -323,28 +323,47 @@ export async function adminReturnBook(loanId: string) {
         return { success: false, error: 'Admin access required' }
     }
 
-    const { data, error } = await adminSupabase.rpc('return_book', {
-        p_loan_id: loanId,
+    // Fetch the transaction to ensure it exists and is not returned
+    const { data: tx, error: fetchError } = await adminSupabase
+        .from('transactions')
+        .select('id, status, book_id')
+        .eq('id', loanId)
+        .single()
+
+    if (fetchError || !tx) {
+        return { success: false, error: 'Loan not found' }
+    }
+
+    if (tx.status === 'RETURNED') {
+        return { success: false, error: 'Book already returned' }
+    }
+
+    // Update the transaction status and date
+    const { error: updateError } = await adminSupabase
+        .from('transactions')
+        .update({
+            status: 'RETURNED',
+            returned_at: new Date().toISOString()
+        })
+        .eq('id', loanId)
+
+    if (updateError) {
+        return { success: false, error: updateError.message }
+    }
+
+    // Increment available copies using the RPC which still works
+    await adminSupabase.rpc('increment_available_copies', { p_book_id: tx.book_id })
+
+    // Log admin action
+    await adminSupabase.rpc('log_admin_action', {
+        p_admin_id: user.id,
+        p_action: 'LOAN_OVERRIDE_RETURN',
+        p_metadata: { loan_id: loanId },
     })
 
-    if (error) {
-        return { success: false, error: error.message }
-    }
+    revalidatePath('/admin/loans')
 
-    const result = data as { success: boolean; error?: string; message?: string }
-
-    if (result.success) {
-        // Log admin action
-        await adminSupabase.rpc('log_admin_action', {
-            p_admin_id: user.id,
-            p_action: 'LOAN_OVERRIDE_RETURN',
-            p_metadata: { loan_id: loanId },
-        })
-
-        revalidatePath('/admin/loans')
-    }
-
-    return result
+    return { success: true, message: 'Book returned successfully' }
 }
 
 export async function extendLoanDueDate(loanId: string, newDueDate: string) {
@@ -369,7 +388,7 @@ export async function extendLoanDueDate(loanId: string, newDueDate: string) {
 
     // Get the loan
     const { data: loan, error: loanError } = await adminSupabase
-        .from('loans')
+        .from('transactions')
         .select('*')
         .eq('id', loanId)
         .single()
@@ -384,10 +403,10 @@ export async function extendLoanDueDate(loanId: string, newDueDate: string) {
 
     // Update the due date
     const { error } = await adminSupabase
-        .from('loans')
+        .from('transactions')
         .update({
-            due_at: newDueDate,
-            status: 'BORROWED' // Reset status if was overdue
+            due_date: newDueDate,
+            status: 'ACTIVE' // Reset status if was overdue
         })
         .eq('id', loanId)
 
@@ -478,6 +497,7 @@ export async function updateOverdueLoans() {
 }
 
 export async function getLibraryStats() {
+    const adminSupabase = await createAdminClient()
     const supabase = await createClient()
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -485,20 +505,50 @@ export async function getLibraryStats() {
         return null
     }
 
-    const { data, error } = await supabase.rpc('get_library_stats')
+    try {
+        // Books stats
+        const { data: books } = await adminSupabase
+            .from('books')
+            .select('total_copies, available_copies')
+            .eq('is_active', true)
+        
+        let total_books = books?.length || 0;
+        let total_copies = 0;
+        let available_copies = 0;
+        
+        books?.forEach(b => {
+            total_copies += b.total_copies || 0;
+            available_copies += b.available_copies || 0;
+        });
 
-    if (error) {
+        // Active Loans
+        const { count: active_loans } = await adminSupabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'ACTIVE')
+
+        // Overdue Loans
+        const { count: overdue_loans } = await adminSupabase
+            .from('transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'OVERDUE')
+
+        // Total Students
+        const { count: total_students } = await adminSupabase
+            .from('students')
+            .select('*', { count: 'exact', head: true })
+
+        return {
+            total_books,
+            total_copies,
+            available_copies,
+            active_loans: active_loans || 0,
+            overdue_loans: overdue_loans || 0,
+            total_students: total_students || 0
+        }
+    } catch (error) {
         console.error('Stats error:', error)
         return null
-    }
-
-    return data as {
-        total_books: number
-        total_copies: number
-        available_copies: number
-        active_loans: number
-        overdue_loans: number
-        total_students: number
     }
 }
 

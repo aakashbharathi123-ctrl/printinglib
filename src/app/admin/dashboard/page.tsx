@@ -17,13 +17,12 @@ export default async function AdminDashboard() {
     const supabase = await createClient()
     const stats = await getLibraryStats()
 
-    // Get recent loans for activity
     const { data: recentLoans } = await supabase
-        .from("loans")
+        .from("transactions")
         .select(`
       *,
       books (title, book_id),
-      profiles (full_name, email)
+      students (name, reg_no)
     `)
         .order("created_at", { ascending: false })
         .limit(5)
@@ -138,7 +137,7 @@ export default async function AdminDashboard() {
                                         <div>
                                             <p className="font-medium text-sm">{loan.books?.title}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                {loan.profiles?.full_name || loan.profiles?.email}
+                                                {loan.students?.name || loan.students?.reg_no}
                                             </p>
                                         </div>
                                     </div>
