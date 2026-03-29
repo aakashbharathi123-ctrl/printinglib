@@ -128,7 +128,8 @@ export default function AdminBooksPage() {
             .not("category", "is", null)
 
         if (data) {
-            const categoriesSet = new Set(data.map(b => b.category).filter((c): c is string => !!c))
+            // Fix: Cast data to avoid 'never' type errors during mapping
+            const categoriesSet = new Set((data as any[]).map(b => b.category).filter((c): c is string => !!c))
             const uniqueCategories = Array.from(categoriesSet)
             setCategories(uniqueCategories.sort())
         }
@@ -155,17 +156,20 @@ export default function AdminBooksPage() {
     }
 
     const openEditDialog = (book: Book) => {
+        const cleanImageUrl = (book.image_url && book.image_url.toUpperCase() !== 'NULL') ? book.image_url : "";
+        const cleanCategory = (book.category && book.category.toUpperCase() !== 'NULL') ? book.category : "";
+
         setEditingBook(book)
         setFormData({
             book_id: book.book_id,
             title: book.title,
             author: book.author,
-            image_url: book.image_url || "",
-            category: book.category || "",
+            image_url: cleanImageUrl,
+            category: cleanCategory,
             total_copies: book.total_copies,
         })
         setImageFile(null)
-        setImagePreview(book.image_url || "")
+        setImagePreview(cleanImageUrl)
         setIsFormOpen(true)
     }
 
@@ -372,7 +376,7 @@ export default function AdminBooksPage() {
                                             <TableCell className="py-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="relative h-14 w-10 bg-muted rounded-md overflow-hidden flex-shrink-0 shadow-sm">
-                                                        {book.image_url ? (
+                                                        {book.image_url && book.image_url.toUpperCase() !== 'NULL' ? (
                                                             <Image src={book.image_url} alt={book.title} fill className="object-cover" />
                                                         ) : (
                                                             <div className="flex items-center justify-center h-full w-full">
@@ -457,7 +461,7 @@ export default function AdminBooksPage() {
                             <div className="space-y-4">
                                 <Label className="text-base font-semibold">Book Cover Image</Label>
                                 <div className="relative group aspect-[3/4] rounded-2xl bg-muted border-2 border-dashed flex flex-col items-center justify-center overflow-hidden transition-all hover:border-primary/50">
-                                    {imagePreview ? (
+                                    {imagePreview && imagePreview.toUpperCase() !== 'NULL' ? (
                                         <>
                                             <Image src={imagePreview} alt="Preview" fill className="object-cover" />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

@@ -49,15 +49,21 @@ export default function AdminStudentsPage() {
         try {
             const text = await csvFile.text()
             const lines = text.split("\n")
-            const headers = lines[0].toLowerCase().split(",")
+            if (lines.length < 2) throw new Error("CSV is empty")
             
-            const nameIdx = headers.findIndex(h => h.trim().includes("name"))
-            const regIdx = headers.findIndex(h => h.trim().includes("reg"))
+            const headers = lines[0].toLowerCase().split(",").map(h => h.trim())
+            
+            // Map headers to indices
+            const regIdx = headers.findIndex(h => h.includes("registration no") || h.includes("reg_no") || h.includes("reg no"))
+            const nameIdx = headers.findIndex(h => h.includes("full name") || h.includes("name"))
+            const surnameIdx = headers.findIndex(h => h.includes("surname") || h.includes("initials"))
+            const emailIdx = headers.findIndex(h => h.includes("email"))
+            const mobileIdx = headers.findIndex(h => h.includes("mobile") || h.includes("phone"))
 
             if (nameIdx === -1 || regIdx === -1) {
                 toast({ 
                     title: "Invalid CSV", 
-                    description: "CSV must have 'name' and 'reg_no' columns.", 
+                    description: "CSV must at least have 'Full Name' and 'Registration No' columns.", 
                     variant: "destructive" 
                 })
                 setIsUploading(false)
@@ -65,12 +71,17 @@ export default function AdminStudentsPage() {
             }
 
             const parsedStudents = lines.slice(1)
-                .map(line => line.split(","))
-                .filter(parts => parts.length >= 2 && parts[nameIdx]?.trim() && parts[regIdx]?.trim())
-                .map(parts => ({
-                    name: parts[nameIdx].trim(),
-                    reg_no: parts[regIdx].trim()
-                }))
+                .map(line => {
+                    const parts = line.split(",").map(p => p.trim())
+                    return {
+                        name: parts[nameIdx] || "",
+                        reg_no: parts[regIdx] || "",
+                        surname: surnameIdx !== -1 ? parts[surnameIdx] : "",
+                        email: emailIdx !== -1 ? parts[emailIdx] : "",
+                        mobile: mobileIdx !== -1 ? parts[mobileIdx] : ""
+                    }
+                })
+                .filter(s => s.name && s.reg_no)
 
             if (parsedStudents.length === 0) {
                 toast({ title: "Empty CSV", description: "No valid student records found.", variant: "destructive" })
@@ -83,11 +94,12 @@ export default function AdminStudentsPage() {
                 setUploadResults({ success: result.count!, total: parsedStudents.length })
                 toast({ title: "Upload Success", description: `Uploaded ${result.count} students.` })
                 loadStudents()
+                setCsvFile(null)
             } else {
                 toast({ title: "Upload Error", description: result.error, variant: "destructive" })
             }
-        } catch (err) {
-            toast({ title: "Error", description: "Failed to parse CSV file.", variant: "destructive" })
+        } catch (err: any) {
+            toast({ title: "Error", description: err.message || "Failed to parse CSV file.", variant: "destructive" })
         } finally {
             setIsUploading(false)
         }
@@ -95,7 +107,9 @@ export default function AdminStudentsPage() {
 
     const filteredStudents = students.filter(s => 
         s.name.toLowerCase().includes(search.toLowerCase()) || 
-        s.reg_no.toLowerCase().includes(search.toLowerCase())
+        s.reg_no.toLowerCase().includes(search.toLowerCase()) ||
+        s.email?.toLowerCase().includes(search.toLowerCase()) ||
+        s.mobile?.toLowerCase().includes(search.toLowerCase())
     )
 
     return (
@@ -150,10 +164,12 @@ export default function AdminStudentsPage() {
                             <Table>
                                 <TableHeader className="bg-muted/30">
                                     <TableRow>
-                                        <TableHead className="font-bold py-4">Name</TableHead>
-                                        <TableHead className="font-bold py-4">Register Number</TableHead>
-                                        <TableHead className="font-bold py-4">Join Date</TableHead>
-                                        <TableHead className="text-right font-bold py-4 pr-6">Status</TableHead>
+                                        <TableHead className="py-4 pl-6">Student Details</TableHead>
+                                        <TableHead>Registration No</TableHead>
+                                        <TableHead>Surname</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Mobile</TableHead>
+                                        <TableHead className="text-right pr-6">Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -161,12 +177,12 @@ export default function AdminStudentsPage() {
                                         <TableRow key={student.id} className="hover:bg-primary/5 transition-colors group">
                                             <TableCell className="font-semibold text-lg py-5 pl-6">{student.name}</TableCell>
                                             <TableCell className="font-mono text-primary/80">{student.reg_no}</TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                                {new Date(student.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                                            </TableCell>
+                                            <TableCell className="text-muted-foreground">{student.surname || "-"}</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">{student.email || "-"}</TableCell>
+                                            <TableCell className="text-sm font-mono">{student.mobile || "-"}</TableCell>
                                             <TableCell className="text-right pr-6">
                                                 <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                                                    Active Student
+                                                    Active
                                                 </span>
                                             </TableCell>
                                         </TableRow>
@@ -207,8 +223,9 @@ export default function AdminStudentsPage() {
                                     </h4>
                                     <ul className="text-sm space-y-2 text-muted-foreground list-disc pl-5">
                                         <li>Must contain a header row.</li>
-                                        <li>Columns needed: <code className="bg-muted px-1 rounded">name</code>, <code className="bg-muted px-1 rounded">reg_no</code>.</li>
-                                        <li>File must be in <code className="bg-muted px-1 rounded">.csv</code> format.</li>
+                                        <li>Required: <code>Registration No</code>, <code>Full Name</code>.</li>
+                                        <li>Optional: <code>Surname or Initials</code>, <code>Email</code>, <code>Mobile</code>.</li>
+                                        <li>File must be in <code>.csv</code> format.</li>
                                     </ul>
                                 </div>
 

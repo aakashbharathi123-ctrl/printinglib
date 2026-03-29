@@ -63,6 +63,7 @@ import {
 } from "@/actions/admin"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/components/ui/use-toast"
+import { sendEmail } from "@/lib/email"
 
 export default function BookTrackingDashboard() {
     const [transactions, setTransactions] = useState<any[]>([])
@@ -158,6 +159,54 @@ export default function BookTrackingDashboard() {
             loadData()
         } else {
             toast({ title: "Error", description: result.error, variant: "destructive" })
+        }
+    }
+
+    const handleSendReminder = async (tx: any) => {
+        setActionLoading(tx.id)
+        
+        const params = {
+            student_name: tx.students?.name || "Student",
+            student_id: tx.students?.reg_no || "N/A",
+            student_email: tx.students?.email || "",
+            book_title: tx.books?.title || "Book",
+            book_id: tx.books?.id || "N/A",
+            due_date: new Date(tx.due_date).toLocaleDateString(),
+            fine_amount: tx.fine_amount || 500,
+        }
+
+        let staffSuccess = false;
+        let studentSuccess = false;
+
+        // Notify Staff
+        if (tx.staff?.email) {
+            const res = await sendEmail('staff', {
+                ...params,
+                to_name: tx.staff.name,
+                to_email: tx.staff.email,
+            })
+            staffSuccess = res.success;
+        }
+
+        // Notify Student
+        if (tx.students?.email) {
+            const res = await sendEmail('student', {
+                ...params,
+                to_name: tx.students.name,
+                to_email: tx.students.email,
+            })
+            studentSuccess = res.success;
+        }
+        
+        setActionLoading(null)
+
+        if (staffSuccess || studentSuccess) {
+            toast({ 
+                title: "Notifications Sent", 
+                description: `Manual notify triggered for ${tx.students?.name}` 
+            })
+        } else {
+            toast({ title: "Notification Failed", description: "Could not send emails. Check credentials.", variant: "destructive" })
         }
     }
 
@@ -301,7 +350,10 @@ export default function BookTrackingDashboard() {
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end" className="rounded-xl">
                                                         <DropdownMenuItem onClick={() => handleReturn(tx.id)} disabled={!!actionLoading} className="text-green-600">Mark Returned</DropdownMenuItem>
-                                                        <DropdownMenuItem><Mail className="h-4 w-4 mr-2" /> Send Reminder</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleSendReminder(tx)} disabled={!!actionLoading} className="cursor-pointer">
+                                                            <Mail className="h-4 w-4 mr-2" /> 
+                                                            Manual Notify
+                                                        </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             )}

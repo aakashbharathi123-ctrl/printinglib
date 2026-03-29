@@ -130,3 +130,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 8. Storage Bucket Note: Create 'book-images' bucket in Supabase dashboard
+
+-- 9. Promote specified users to Admin
+UPDATE profiles 
+SET role = 'admin' 
+WHERE email IN ('aakashbharathi123@gmail.com', 'arshadahmedpersonal@gmail.com');

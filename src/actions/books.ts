@@ -118,6 +118,10 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
 
     for (const book of books) {
         try {
+            // Sanitize NULL strings from Excel/Imports
+            const cleanImageUrl = (book.image_url && typeof book.image_url === 'string' && book.image_url.toUpperCase() === 'NULL') ? null : (book.image_url || null);
+            const cleanCategory = (book.category && typeof book.category === 'string' && book.category.toUpperCase() === 'NULL') ? null : (book.category || null);
+
             // Check if book exists
             const { data: existing } = await adminSupabase
                 .from('books')
@@ -137,8 +141,8 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
                     .update({
                         title: book.title,
                         author: book.author,
-                        image_url: book.image_url,
-                        category: book.category,
+                        image_url: cleanImageUrl,
+                        category: cleanCategory,
                         total_copies: newTotal,
                         available_copies: newAvailable,
                     })
@@ -154,8 +158,8 @@ export async function bulkUpsertBooks(books: ExcelBookRow[]) {
                         book_id: book.book_id,
                         title: book.title,
                         author: book.author || '',
-                        image_url: book.image_url,
-                        category: book.category,
+                        image_url: cleanImageUrl,
+                        category: cleanCategory,
                         total_copies: book.total_copies || 1,
                         available_copies: book.total_copies || 1,
                     })
